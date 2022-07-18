@@ -1,47 +1,51 @@
 <script>
-var W=512,H=512;
-var S=512;
+const SIZE = 512
+let canvas, gl, renderShader, circleShader, texture, framebuffer, quad, renderer, ruleImage
+window.onload = () => {
+  canvas = document.querySelector('canvas')
+  canvas.width = canvas.height = SIZE
+  gl = canvas.getContext('webgl', { preserveDrawingBuffer: true })
+  renderShader = createShaderProgram(gl, 'vshader', 'renderfshader')
+  circleShader = createShaderProgram(gl, 'circleVShader', 'circleFShader')
+  texture = createTexture(gl, SIZE, SIZE)
+  framebuffer = gl.createFramebuffer()
+  quad = makeQuadVBO(gl)
+  renderer = new FractalRenderer(gl, SIZE)
 
-window.onload=function(){
-  canvas=document.getElementsByTagName("canvas")[0];
-  canvas.width=W;canvas.height=H;
-  gl=canvas.getContext("experimental-webgl",{preserveDrawingBuffer:true});
-  if(!gl){alert("Sorry your browser doesn't support WebGL");document.body.innerHTML='sorry';return;}
-  renderShader=createShaderProgram(gl,"vshader","renderfshader");
-  circleShader=createShaderProgram(gl,"circleVShader","circleFShader");
-  texture=createTexture(gl,S,S);
-  framebuffer=gl.createFramebuffer();
-  quad=makeQuadVBO(gl);
-  renderer=new FractalRenderer(gl,S);
-
-  var start=null;
-  canvas.onmousedown=function(e){
-    var w=canvas.offsetWidth,h=canvas.offsetHeight;
-    start={x:2*e.pageX/w-1,y:1-2*e.pageY/h};
-    fractal.push(makeFractal(start,start));
-  }
-  canvas.onmousemove=function(e){
-    if(start){
-      var w=canvas.offsetWidth,h=canvas.offsetHeight;
-      var end={x:2*e.pageX/w-1,y:1-2*e.pageY/h};
-      fractal[fractal.length-1]=makeFractal(start,end);
-      draw(true);
+  let start = null
+  canvas.onmousedown = e => {
+    const x = 2 * e.pageX / canvas.offsetWidth - 1
+    const y = 1 - 2 * e.pageY / canvas.offsetHeight
+    start = { x, y }
+    fractal.push(makeFractal(start, start))
+    document.body.addEventListener('mousemove', mousemove)
+    const mouseup = () => {
+      document.body.removeEventListener('mousemove', mousemove)
+      document.body.removeEventListener('mouseup', mouseup)
     }
+    document.body.addEventListener('mouseup', mouseup)
   }
-  main=document.getElementById("main");
-  main.onmouseout=function(e){draw(false);}
-  main.onmouseover=function(e){draw(true)}
-  canvas.onmouseup=function(e){start=null;}
+  function mousemove(e) {
+    if (!start) return
+    const x = 2 * e.pageX / canvas.offsetWidth - 1
+    const y = 1 - 2 * e.pageY / canvas.offsetHeight
+    fractal[fractal.length - 1] = makeFractal(start, { x, y })
+    draw(true)
+  }
+  const main = document.getElementById('main')
+  main.onmouseout = () => draw(false)
+  main.onmouseover = () => draw(true)
+  canvas.onmouseup = () => { start = null }
 
-  ruleimg=gl.createTexture();
-  loadTexture(arrowImage(512), ruleimg, true)
+  ruleImage = gl.createTexture()
+  loadTexture(arrowImage(512), ruleImage, true)
   draw(true)
 }
 
 function arrowImage(size) {
-  var img = document.createElement('canvas')
+  const img = document.createElement('canvas')
   img.width = img.height = size
-  var ctx = img.getContext('2d')
+  const ctx = img.getContext('2d')
   ctx.strokeStyle = 'white'
   const lineWidth = ctx.lineWidth = img.width / 32
   ctx.beginPath()
@@ -61,207 +65,221 @@ function arrowImage(size) {
   return img
 }
 
-
-function makeFractal(p1,p2){
-  var x=(p1.x+p2.x)/2;
-  var y=(p1.y+p2.y)/2;
-  var dx=p2.x-p1.x,dy=p2.y-p1.y;
-  return {x:x,y:y,r:Math.sqrt(dx*dx+dy*dy)/2,t:-Math.atan2(dy,dx)};
+function makeFractal(p1, p2) {
+  const x = (p1.x + p2.x) / 2
+  const y = (p1.y + p2.y) / 2
+  const dx = p2.x - p1.x
+  const dy = p2.y - p1.y
+  return { x, y, r: Math.hypot(dx, dy) / 2, t: -Math.atan2(dy, dx) }
 }
 
-
-function FractalRenderer(gl,size){
-  this.S=size;
-  this.gl=gl;
-  this.shader=createShaderProgram(gl,"vshader","fshader");
-  var s0=8;
-  var smin=16;
-  this.textureBase=createTexture(gl,Math.max(s0,smin),Math.max(s0,smin));
-  setTarget(this.textureBase,Math.max(s0,smin),Math.max(s0,smin));
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  drawCircle(gl,0,0,1,1);
-  this.textures=[];
-  for(var i=0;(s0<<i)<=S;i++){
-    var s=Math.max(s0<<i,smin);
-    this.textures[i]={size:s,texture:[createTexture(gl,s,s),createTexture(gl,s,s)]};
+class FractalRenderer{
+  constructor(gl, size){
+    this.gl = gl
+    this.SIZE = size
+    this.shader = createShaderProgram(gl, 'vshader', 'fshader')
+    const s0 = 8
+    const smin = 16
+    this.textureBase = createTexture(gl, smin, smin)
+    setTarget(this.textureBase, smin, smin)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    drawCircle(gl, 0, 0, 1, 1)
+    this.textures = []
+    for (let i = 0; (s0 << i) <= SIZE; i++) {
+      const s = Math.max(s0 << i, smin)
+      this.textures[i] = { size: s, texture: [createTexture(gl, s, s), createTexture(gl, s, s)] }
+    }
   }
-}
-FractalRenderer.prototype.renderRule=function(texture,fractal){
-  var gl=this.gl,S=this.S;
-  setTarget(texture,S,S);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-  drawImage(gl,this.shader,ruleimg,0,0,1,-Math.PI/2,{alpha:0.3})
-  for(var k=0;k<fractal.length;k++){
-    var f=fractal[k];
-    drawImage(gl,this.shader,ruleimg,f.x,f.y,f.r,f.t-Math.PI/2,{alpha:k==fractal.length-1?0.5:0.3})
+  renderRule(texture, fractal) {
+    const { gl, SIZE } = this
+    setTarget(texture, SIZE, SIZE)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    drawImage(gl, this.shader, ruleImage, 0, 0, 1, -Math.PI / 2, { alpha: 0.3 })
+    for(let k = 0; k < fractal.length; k++){
+      const f = fractal[k]
+      const alpha = k === fractal.length - 1 ? 0.5 : 0.3
+      drawImage(gl, this.shader, ruleImage, f.x, f.y, f.r, f.t - Math.PI / 2, { alpha })
+    }
   }
-}
-FractalRenderer.prototype.render=function(texture,fractal){
-  var gl=this.gl,S=this.S;
-  gl.clearColor(0,0,0,1);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE,gl.ONE);
-  var val=0;for(var i=0;i<fractal.length;i++)val+=fractal[i].r*fractal[i].r;
-  var img=this.textureBase;
-  for(var i=0;i<this.textures.length;i++){
-    var tobj=this.textures[i];
-    for(var j=0;j<3;j++){
-      setTarget(tobj.texture[j%2],tobj.size,tobj.size);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      for(var k=0;k<fractal.length;k++){
-        var f=fractal[k];
-        drawImage(gl,this.shader,img,f.x,f.y,f.r,f.t,{alpha:1/val});
+  render(texture, fractal) {
+    const { gl, SIZE } = this
+    gl.clearColor(0, 0, 0, 1)
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.ONE, gl.ONE)
+    let val = 0
+    for (const f of fractal) val += f.r ** 2
+    const alpha = 1 / val
+    let img = this.textureBase
+    for (const tobj of this.textures) {
+      for (let j = 0; j < 3; j++) {
+        const target = tobj.texture[j % 2]
+        setTarget(target, tobj.size, tobj.size)
+        gl.clear(gl.COLOR_BUFFER_BIT)
+        for (const f of fractal) {
+          drawImage(gl, this.shader, img, f.x, f.y, f.r, f.t, { alpha })
+        }
+        img = target
       }
-      img=tobj.texture[j%2];
+    }
+    setTarget(texture, SIZE, SIZE)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    for (const f of fractal) {
+      drawImage(gl, this.shader, img, f.x, f.y, f.r, f.t, { alpha })
     }
   }
-  setTarget(texture,S,S);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  for(var k=0;k<fractal.length;k++){
-    var f=fractal[k];
-    drawImage(gl,this.shader,img,f.x,f.y,f.r,f.t,{alpha:1/val});
-  }
 }
 
-
-function genRandFunc(a,b){
-  return function(){return a+(b-a)*Math.random()}
+function genRandFunc(a, b) {
+  return () => a + (b - a) * Math.random()
 }
 
-fractal=[];
+const fractal = []
 
-
-
-function draw(ruleFlag){
-  renderer.render(texture,fractal);
-  setTarget(null);
-  gl.clearColor(0,0,0,1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.blendFunc(gl.ONE,gl.ONE);
-  if(ruleFlag)renderer.renderRule(null,fractal);
-  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-  drawImage(gl,renderShader,texture,0,0,1,0,{color:[1,0,1],dcolor:[0,1,0]});
+function draw(ruleFlag) {
+  renderer.render(texture, fractal)
+  setTarget(null)
+  gl.clearColor(0, 0, 0, 1)
+  gl.clear(gl.COLOR_BUFFER_BIT)
+  gl.blendFunc(gl.ONE, gl.ONE)
+  if (ruleFlag) renderer.renderRule(null, fractal)
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+  drawImage(gl, renderShader, texture, 0, 0, 1, 0, { color: [1, 0, 1], dcolor: [0, 1, 0] })
 }
-function makeQuadVBO(gl){
-  var varr=[-1,-1,1,-1,1,1,-1,1];
-  var vertex=gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER,vertex);
-  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(varr),gl.STATIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER,null);
-  return vertex;
+function makeQuadVBO(gl) {
+  const varr = [-1, -1, 1, -1, 1, 1, -1, 1]
+  const vertex = gl.createBuffer()
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertex)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(varr), gl.STATIC_DRAW)
+  gl.bindBuffer(gl.ARRAY_BUFFER, null)
+  return vertex
 }
 
-function setTarget(texture,w,h){
+function setTarget(texture, w, h) {
   if(texture){
-    gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);
-    gl.viewport(0,0,w,h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
+    gl.viewport(0, 0, w, h)
   }else{
-    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
-    gl.viewport(0,0,w||W,h||H);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.viewport(0, 0, w || SIZE, h || SIZE)
   }
 }
-function drawImage(gl,shader,texture,x,y,size,theta,option){
-  gl.useProgram(shader);
-  var c=size*Math.cos(theta),s=size*Math.sin(theta);
-  gl.uniformMatrix2fv(shader.uniform.rotate,false,new Float32Array([c,-s,s,c]));
-  gl.uniform2f(shader.uniform.position,x,y);
-  gl.uniform1i(shader.uniform.texture,0);
-  for(var key in option){
-    var val=option[key];
-    if(!val.length){gl.uniform1f(shader.uniform[key],val);continue;}
-    switch(val.length){
-      case 1:gl.uniform1f(shader.uniform[key],val[0]);
-      case 2:gl.uniform2f(shader.uniform[key],val[0],val[1]);
-      case 3:gl.uniform3f(shader.uniform[key],val[0],val[1],val[2]);
-      case 4:gl.uniform4f(shader.uniform[key],val[0],val[1],val[2],val[3]);
+function drawImage(gl, shader, texture, x, y, size, theta, option) {
+  gl.useProgram(shader)
+  const c = size * Math.cos(theta)
+  const s = size * Math.sin(theta)
+  gl.uniformMatrix2fv(shader.uniform.rotate, false, new Float32Array([c, -s, s, c]))
+  gl.uniform2f(shader.uniform.position, x, y)
+  gl.uniform1i(shader.uniform.texture, 0)
+  for (const key in option) {
+    const val = option[key]
+    if (!Array.isArray(val)) {
+      gl.uniform1f(shader.uniform[key], val)
+      continue
+    }
+    switch (val.length) {
+      case 1:
+        gl.uniform1f(shader.uniform[key], ...val)
+        break
+      case 2:
+        gl.uniform2f(shader.uniform[key], ...val)
+        break
+      case 3:
+        gl.uniform3f(shader.uniform[key], ...val)
+        break
+      case 4:
+        gl.uniform4f(shader.uniform[key], ...val)
+        break
     }
   }
-  gl.bindTexture(gl.TEXTURE_2D,texture);
-  gl.enableVertexAttribArray(shader.attribute.vertex);
-  gl.bindBuffer(gl.ARRAY_BUFFER,quad);
-  gl.vertexAttribPointer(shader.attribute.vertex,2,gl.FLOAT,false,0,0);
-  gl.drawArrays(gl.TRIANGLE_FAN,0,4);
-}
-function drawCircle(gl,x,y,r,alpha){
-  gl.useProgram(circleShader);
-  gl.uniform2f(circleShader.uniform.position,x,y);
-  gl.uniform1f(circleShader.uniform.radius,r);
-  gl.uniform1f(circleShader.uniform.alpha,alpha);
-  gl.enableVertexAttribArray(circleShader.attribute.vertex);
-  gl.bindBuffer(gl.ARRAY_BUFFER,quad);
-  gl.vertexAttribPointer(circleShader.attribute.vertex,2,gl.FLOAT,false,0,0);
-  gl.drawArrays(gl.TRIANGLE_FAN,0,4);
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.enableVertexAttribArray(shader.attribute.vertex)
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad)
+  gl.vertexAttribPointer(shader.attribute.vertex, 2, gl.FLOAT, false, 0, 0)
+  gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
 }
 
-function createShaderProgram(gl,vid,fid){
-  function compile(type,id){
-    var code=document.getElementById(id).text;
-    var shader=gl.createShader(type);
-    gl.shaderSource(shader,code);
-    gl.compileShader(shader);
-    if(gl.getShaderParameter(shader,gl.COMPILE_STATUS))return shader;
-    var log="Error compiling shader '"+id+"'\n"+gl.getShaderInfoLog(shader);
-    codelines=code.split("\n");
-    function itoa(i){var s="",n=codelines.length;while(n>1){s=(i%10)+s;i=Math.floor(i/10);n/=10}return s;}
-    for(var i=0;i<codelines.length;i++)log+="\n"+itoa(i+1)+" "+codelines[i];
-    gl.deleteShader(shader);
-    console.log(log);
-  }
-  var vshader=compile(gl.VERTEX_SHADER,vid);
-  var fshader=compile(gl.FRAGMENT_SHADER,fid);
-  if(!vshader||!fshader){
-    if(vshader)gl.deleteShader(vshader);
-    if(fshader)gl.deleteShader(fshader);
-    return null;
-  }
-  var program=gl.createProgram();
-  gl.attachShader(program,vshader);
-  gl.attachShader(program,fshader);
-  gl.linkProgram(program);
+function drawCircle(gl, x, y, r, alpha) {
+  gl.useProgram(circleShader)
+  gl.uniform2f(circleShader.uniform.position, x, y)
+  gl.uniform1f(circleShader.uniform.radius, r)
+  gl.uniform1f(circleShader.uniform.alpha, alpha)
+  gl.enableVertexAttribArray(circleShader.attribute.vertex)
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad)
+  gl.vertexAttribPointer(circleShader.attribute.vertex, 2, gl.FLOAT, false, 0, 0)
+  gl.drawArrays(gl.TRIANGLE_FAN, 0, 4)
+}
 
-  if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
-    console.log("Error in program linking:"+gl.getProgramInfoLog(program));
-    if(vshader)gl.deleteShader(vshader);
-    if(fshader)gl.deleteShader(fshader);
-    gl.deleteProgram(program);
-    return null;
+function createShaderProgram(gl, vid, fid) {
+  function compile(type, id) {
+    const code = document.getElementById(id).text
+    const shader = gl.createShader(type)
+    gl.shaderSource(shader, code)
+    gl.compileShader(shader)
+    if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) return shader
+    const logs = [`Error compiling shader '${id}'`, gl.getShaderInfoLog(shader)]
+    code.split('\n').forEach((line, i) => {
+      let num = `${i + 1}`
+      if (num.length < 3) num = ('000' + num).substr(-3)
+      logs.push(`${num}: ${line}`)
+    })
+    gl.deleteShader(shader)
+    console.log(logs.join('\n'))
   }
-  program.uniform={};
-  program.attribute={};
-  var attrLength=gl.getProgramParameter(program,gl.ACTIVE_ATTRIBUTES);
-  for(var i=0;i<attrLength;i++){
-    var attr=gl.getActiveAttrib(program,i);
-    program.attribute[attr.name]=gl.getAttribLocation(program,attr.name);
+  const vshader = compile(gl.VERTEX_SHADER, vid)
+  const fshader = compile(gl.FRAGMENT_SHADER, fid)
+  if (!vshader || !fshader){
+    if (vshader) gl.deleteShader(vshader)
+    if (fshader) gl.deleteShader(fshader)
+    return null
   }
-  var uniLength=gl.getProgramParameter(program,gl.ACTIVE_UNIFORMS);
-  for(var i=0;i<uniLength;i++){
-    var uni=gl.getActiveUniform(program,i);
-    program.uniform[uni.name]=gl.getUniformLocation(program,uni.name);
+  const program = gl.createProgram()
+  gl.attachShader(program, vshader)
+  gl.attachShader(program, fshader)
+  gl.linkProgram(program)
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.log('Error in program linking:' + gl.getProgramInfoLog(program))
+    gl.deleteShader(vshader)
+    gl.deleteShader(fshader)
+    gl.deleteProgram(program)
+    return null
   }
-  return program;
+  program.uniform = {}
+  program.attribute = {}
+  const attrLength = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES)
+  for (let i = 0; i < attrLength; i++) {
+    const attr = gl.getActiveAttrib(program, i)
+    program.attribute[attr.name]=gl.getAttribLocation(program, attr.name)
+  }
+  const uniLength = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS)
+  for (let i = 0; i < uniLength; i++) {
+    const uni = gl.getActiveUniform(program, i)
+    program.uniform[uni.name] = gl.getUniformLocation(program, uni.name)
+  }
+  return program
 }
-function createTexture(gl,w,h){
-  var format=gl.UNSIGNED_BYTE
-  var texture=gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D,texture);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  gl.bindTexture(gl.TEXTURE_2D,null);
-  return texture;
+function createTexture(gl, w, h) {
+  const format = gl.UNSIGNED_BYTE
+  const texture = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.bindTexture(gl.TEXTURE_2D, null)
+  return texture
 }
-function loadTexture(img,texture,mipmap){
-  gl.bindTexture(gl.TEXTURE_2D,texture);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,mipmap?gl.LINEAR_MIPMAP_LINEAR:gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
-  if(mipmap)gl.generateMipmap(gl.TEXTURE_2D);
-  return texture;
+function loadTexture(img, texture, mipmap) {
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mipmap ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+  if (mipmap) gl.generateMipmap(gl.TEXTURE_2D)
+  return texture
 }
 </script>
 <script id="vshader" type="x-shader/x-vertex">
