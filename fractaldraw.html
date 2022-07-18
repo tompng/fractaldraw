@@ -1,5 +1,6 @@
+<meta name="viewport" content="width=device-width">
 <script>
-const SIZE = 512
+const SIZE = 1024
 let canvas, gl, renderShader, circleShader, texture, framebuffer, quad, renderer, ruleImage
 window.onload = () => {
   canvas = document.querySelector('canvas')
@@ -14,6 +15,7 @@ window.onload = () => {
 
   canvas.addEventListener('touchstart', e => e.preventDefault())
   canvas.addEventListener('pointerdown', e => {
+    resetDownload()
     e.preventDefault()
     const x = 2 * (e.pageX - canvas.offsetLeft) / canvas.offsetWidth - 1
     const y = 1 - 2 * (e.pageY - canvas.offsetTop) / canvas.offsetHeight
@@ -58,7 +60,7 @@ window.onload = () => {
   canvas.onmouseover = () => draw(true)
 
   ruleImage = gl.createTexture()
-  loadTexture(arrowImage(512), ruleImage, true)
+  loadTexture(arrowImage(SIZE), ruleImage, true)
   draw(true)
 }
 
@@ -312,6 +314,36 @@ function loadTexture(img, texture, mipmap) {
   if (mipmap) gl.generateMipmap(gl.TEXTURE_2D)
   return texture
 }
+
+let prevObjectURL
+function download() {
+  if (prevObjectURL) URL.revokeObjectURL(prevObjectURL)
+  prevObjectURL = null
+  draw(false)
+  const canvas2 = document.createElement('canvas')
+  canvas2.width = canvas2.height = SIZE
+  const ctx = canvas2.getContext('2d')
+  ctx.fillRect(0, 0, SIZE, SIZE)
+  ctx.drawImage(canvas, 0, 0)
+  canvas2.toBlob(blob => {
+    const url = URL.createObjectURL(blob)
+    prevObjectURL = url
+    const button = document.querySelector('#exportButton')
+    const link = document.querySelector('#downloadLink')
+    link.href = url
+    link.style.display = 'inline-block'
+    button.style.display = 'none'
+  })
+}
+function resetDownload() {
+  if (prevObjectURL) URL.revokeObjectURL(prevObjectURL)
+  prevObjectURL = null
+  const button = document.querySelector('#exportButton')
+  const link = document.querySelector('#downloadLink')
+  link.style.display = 'none'
+  button.style.display = 'inline-block'
+}
+
 </script>
 <script id="vshader" type="x-shader/x-vertex">
 uniform mat2 rotate;
@@ -362,12 +394,17 @@ void main(void){
 }
 </script>
 <style>
-canvas{background:black;cursor:default;}
+canvas{
+  background:black;cursor:default;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 56px);
+}
 .button{display:inline-block;}
 .button-area{
   left:4px;top:4px;
   margin: 4px;
 }
+#downloadLink{display:none}
 .button{
   background:white;
   padding:2px 4px;
@@ -388,8 +425,10 @@ canvas{background:black;cursor:default;}
 
 </style>
 <div class='button-area'>
-  <div onclick="fractal.list=[]; fractal.length = 0; draw(true)" class='button'>CLEAR</div>
-  <div onclick="undo()" class='button'>UNDO</div>
-  <div onclick="redo()" class='button'>REDO</div>
+  <div onpointerdown="fractal.length = 0; draw(true)" class='button'>CLEAR</div>
+  <div onpointerdown="undo()" class='button'>UNDO</div>
+  <div onpointerdown="redo()" class='button'>REDO</div>
+  <div id="exportButton" onpointerdown="download()" class='button'>EXPORT</div>
+  <a id="downloadLink" class="button" target="_blank">DOWNLOAD</a>
 </div>
 <canvas></canvas>
