@@ -15,7 +15,6 @@ window.onload = () => {
 
   canvas.addEventListener('touchstart', e => e.preventDefault())
   canvas.addEventListener('pointerdown', e => {
-    resetDownload()
     e.preventDefault()
     const x = 2 * (e.pageX - canvas.offsetLeft) / canvas.offsetWidth - 1
     const y = 1 - 2 * (e.pageY - canvas.offsetTop) / canvas.offsetHeight
@@ -55,6 +54,9 @@ window.onload = () => {
     }
     console.log(e.key)
   })
+  for (const el of document.querySelectorAll('div.button')) {
+    el.addEventListener('touchstart', e => e.preventDefault())
+  }
 
   canvas.onmouseout = () => draw(false)
   canvas.onmouseover = () => draw(true)
@@ -169,6 +171,7 @@ function genRandFunc(a, b) {
 const fractal = { list: [], length: 0 }
 
 function draw(ruleFlag) {
+  resetDownload()
   const currentFractal = fractal.list.slice(0, fractal.length)
   renderer.render(texture, currentFractal)
   setTarget(null)
@@ -422,7 +425,6 @@ canvas{
   box-shadow:0 0 8px silver;
   background:gray;
 }
-
 </style>
 <div class='button-area'>
   <div onpointerdown="fractal.length = 0; draw(true)" class='button'>CLEAR</div>
