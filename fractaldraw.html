@@ -17,7 +17,9 @@ window.onload = () => {
     const x = 2 * e.pageX / canvas.offsetWidth - 1
     const y = 1 - 2 * e.pageY / canvas.offsetHeight
     start = { x, y }
-    fractal.push(makeFractal(start, start))
+    fractal.list.splice(fractal.length)
+    fractal.list.push(makeFractal(start, start))
+    fractal.length++
     document.body.addEventListener('mousemove', mousemove)
     const mouseup = () => {
       document.body.removeEventListener('mousemove', mousemove)
@@ -29,9 +31,21 @@ window.onload = () => {
     if (!start) return
     const x = 2 * e.pageX / canvas.offsetWidth - 1
     const y = 1 - 2 * e.pageY / canvas.offsetHeight
-    fractal[fractal.length - 1] = makeFractal(start, { x, y })
+    fractal.list[fractal.length - 1] = makeFractal(start, { x, y })
     draw(true)
   }
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.altKey || e.ctrlKey)) return
+    if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+      redo()
+      e.preventDefault()
+    } else if (e.key === 'z') {
+      undo()
+      e.preventDefault()
+    }
+    console.log(e.key)
+  })
+
   const main = document.getElementById('main')
   main.onmouseout = () => draw(false)
   main.onmouseover = () => draw(true)
@@ -39,6 +53,16 @@ window.onload = () => {
 
   ruleImage = gl.createTexture()
   loadTexture(arrowImage(512), ruleImage, true)
+  draw(true)
+}
+
+function undo() {
+  fractal.length = Math.max(fractal.length - 1, 0)
+  draw(true)
+}
+
+function redo() {
+  fractal.length = Math.min(fractal.length + 1, fractal.list.length)
   draw(true)
 }
 
@@ -134,15 +158,16 @@ function genRandFunc(a, b) {
   return () => a + (b - a) * Math.random()
 }
 
-const fractal = []
+const fractal = { list: [], length: 0 }
 
 function draw(ruleFlag) {
-  renderer.render(texture, fractal)
+  const currentFractal = fractal.list.slice(0, fractal.length)
+  renderer.render(texture, currentFractal)
   setTarget(null)
   gl.clearColor(0, 0, 0, 1)
   gl.clear(gl.COLOR_BUFFER_BIT)
   gl.blendFunc(gl.ONE, gl.ONE)
-  if (ruleFlag) renderer.renderRule(null, fractal)
+  if (ruleFlag) renderer.renderRule(null, currentFractal)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   drawImage(gl, renderShader, texture, 0, 0, 1, 0, { color: [1, 0, 1], dcolor: [0, 1, 0] })
 }
@@ -360,6 +385,7 @@ canvas{position:absolute;left:0;top:0;background:black;cursor:default;}
 <div id='main' style='width:100%;height:100%;max-width:512px;max-height:512px;'>
 <canvas style='width:100%;height:100%;'></canvas>
 <div class='button-area'>
-<div onclick="fractal=[];draw(true)" class='button'>CLEAR</div>
-<div onclick="fractal.pop();draw(true)" class='button'>UNDO</div>
+<div onclick="fractal.list=[]; fractal.length = 0; draw(true)" class='button'>CLEAR</div>
+<div onclick="undo()" class='button'>UNDO</div>
+<div onclick="redo()" class='button'>REDO</div>
 </div>
