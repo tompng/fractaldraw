@@ -1,0 +1,324 @@
+<script>
+var W=512,H=512;
+var S=512;
+
+window.onload=function(){
+	canvas=document.getElementsByTagName("canvas")[0];
+	canvas.width=W;canvas.height=H;
+	gl=canvas.getContext("experimental-webgl",{preserveDrawingBuffer:true});
+        if(!gl){alert("Sorry your browser doesn't support WebGL");document.body.innerHTML='sorry';return;}
+	renderShader=createShaderProgram(gl,"vshader","renderfshader");
+	circleShader=createShaderProgram(gl,"circleVShader","circleFShader");
+	texture=createTexture(gl,S,S);
+	framebuffer=gl.createFramebuffer();
+	quad=makeQuadVBO(gl);
+	renderer=new FractalRenderer(gl,S);
+	
+	var start=null;
+	canvas.onmousedown=function(e){
+		var w=canvas.offsetWidth,h=canvas.offsetHeight;
+		start={x:2*e.pageX/w-1,y:1-2*e.pageY/h};
+		fractal.push(makeFractal(start,start));
+	}
+	canvas.onmousemove=function(e){
+		if(start){
+			var w=canvas.offsetWidth,h=canvas.offsetHeight;
+			var end={x:2*e.pageX/w-1,y:1-2*e.pageY/h};
+			fractal[fractal.length-1]=makeFractal(start,end);
+			draw(true);
+		}
+	}
+	main=document.getElementById("main");
+	main.onmouseout=function(e){draw(false);}
+	main.onmouseover=function(e){draw(true)}
+	canvas.onmouseup=function(e){start=null;}
+	
+	ruleimg=gl.createTexture();
+	var img=new Image();
+	img.src="http://jsrun.it/assets/e/w/h/i/ewhi5.png"
+	img.onload=function(){loadTexture(img,ruleimg,true);draw(true);}
+}
+
+function makeFractal(p1,p2){
+	var x=(p1.x+p2.x)/2;
+	var y=(p1.y+p2.y)/2;
+	var dx=p2.x-p1.x,dy=p2.y-p1.y;
+	return {x:x,y:y,r:Math.sqrt(dx*dx+dy*dy)/2,t:-Math.atan2(dy,dx)};
+}
+
+
+function FractalRenderer(gl,size){
+	this.S=size;
+	this.gl=gl;
+	this.shader=createShaderProgram(gl,"vshader","fshader");
+	var s0=8;
+	var smin=16;
+	this.textureBase=createTexture(gl,Math.max(s0,smin),Math.max(s0,smin));
+	setTarget(this.textureBase,Math.max(s0,smin),Math.max(s0,smin));
+	gl.clear(gl.COLOR_BUFFER_BIT);
+	drawCircle(gl,0,0,1,1);
+	this.textures=[];
+	for(var i=0;(s0<<i)<=S;i++){
+		var s=Math.max(s0<<i,smin);
+		this.textures[i]={size:s,texture:[createTexture(gl,s,s),createTexture(gl,s,s)]};
+	}
+}
+FractalRenderer.prototype.renderRule=function(texture,fractal){
+	var gl=this.gl,S=this.S;
+	setTarget(texture,S,S);
+	gl.clear(gl.COLOR_BUFFER_BIT);
+	gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+	drawImage(gl,this.shader,ruleimg,0,0,1,-Math.PI/2,{alpha:0.3})
+	for(var k=0;k<fractal.length;k++){
+		var f=fractal[k];
+		drawImage(gl,this.shader,ruleimg,f.x,f.y,f.r,f.t-Math.PI/2,{alpha:k==fractal.length-1?0.5:0.3})
+	}
+}
+FractalRenderer.prototype.render=function(texture,fractal){
+	var gl=this.gl,S=this.S;
+	gl.clearColor(0,0,0,1);
+	gl.enable(gl.BLEND);
+	gl.blendFunc(gl.ONE,gl.ONE);
+	var val=0;for(var i=0;i<fractal.length;i++)val+=fractal[i].r*fractal[i].r;
+	var img=this.textureBase;
+	for(var i=0;i<this.textures.length;i++){
+		var tobj=this.textures[i];
+		for(var j=0;j<3;j++){
+			setTarget(tobj.texture[j%2],tobj.size,tobj.size);
+			gl.clear(gl.COLOR_BUFFER_BIT);
+			for(var k=0;k<fractal.length;k++){
+				var f=fractal[k];
+				drawImage(gl,this.shader,img,f.x,f.y,f.r,f.t,{alpha:1/val});
+			}
+			img=tobj.texture[j%2];
+		}
+	}
+	setTarget(texture,S,S);
+	gl.clear(gl.COLOR_BUFFER_BIT);
+	for(var k=0;k<fractal.length;k++){
+		var f=fractal[k];
+		drawImage(gl,this.shader,img,f.x,f.y,f.r,f.t,{alpha:1/val});
+	}
+}
+
+
+function genRandFunc(a,b){
+	return function(){return a+(b-a)*Math.random()}
+}
+
+fractal=[];
+
+
+
+function draw(ruleFlag){
+	renderer.render(texture,fractal);
+   	setTarget(null);
+   	gl.clearColor(0,0,0,1);
+	gl.clear(gl.COLOR_BUFFER_BIT);
+	gl.blendFunc(gl.ONE,gl.ONE);
+	if(ruleFlag)renderer.renderRule(null,fractal);
+	gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+	drawImage(gl,renderShader,texture,0,0,1,0,{color:[1,0,1],dcolor:[0,1,0]});
+}
+function makeQuadVBO(gl){
+	var varr=[-1,-1,1,-1,1,1,-1,1];
+	var vertex=gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER,vertex);
+	gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(varr),gl.STATIC_DRAW);
+	gl.bindBuffer(gl.ARRAY_BUFFER,null);
+	return vertex;
+}
+
+function setTarget(texture,w,h){
+	if(texture){
+		gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);
+		gl.viewport(0,0,w,h);
+	}else{
+		gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+		gl.viewport(0,0,w||W,h||H);
+	}
+}
+function drawImage(gl,shader,texture,x,y,size,theta,option){
+	gl.useProgram(shader);
+	var c=size*Math.cos(theta),s=size*Math.sin(theta);
+	gl.uniformMatrix2fv(shader.uniform.rotate,false,new Float32Array([c,-s,s,c]));
+	gl.uniform2f(shader.uniform.position,x,y);
+	gl.uniform1i(shader.uniform.texture,0);
+	for(var key in option){
+		var val=option[key];
+		if(!val.length){gl.uniform1f(shader.uniform[key],val);continue;}
+		switch(val.length){
+			case 1:gl.uniform1f(shader.uniform[key],val[0]);
+			case 2:gl.uniform2f(shader.uniform[key],val[0],val[1]);
+			case 3:gl.uniform3f(shader.uniform[key],val[0],val[1],val[2]);
+			case 4:gl.uniform4f(shader.uniform[key],val[0],val[1],val[2],val[3]);
+		}
+	}
+	gl.bindTexture(gl.TEXTURE_2D,texture);
+	gl.enableVertexAttribArray(shader.attribute.vertex);
+	gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+	gl.vertexAttribPointer(shader.attribute.vertex,2,gl.FLOAT,false,0,0);
+	gl.drawArrays(gl.TRIANGLE_FAN,0,4);
+}
+function drawCircle(gl,x,y,r,alpha){
+	gl.useProgram(circleShader);
+	gl.uniform2f(circleShader.uniform.position,x,y);
+	gl.uniform1f(circleShader.uniform.radius,r);
+	gl.uniform1f(circleShader.uniform.alpha,alpha);
+	gl.enableVertexAttribArray(circleShader.attribute.vertex);
+	gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+	gl.vertexAttribPointer(circleShader.attribute.vertex,2,gl.FLOAT,false,0,0);
+	gl.drawArrays(gl.TRIANGLE_FAN,0,4);
+}
+
+function createShaderProgram(gl,vid,fid){
+	function compile(type,id){
+		var code=document.getElementById(id).text;
+		var shader=gl.createShader(type);
+		gl.shaderSource(shader,code);
+		gl.compileShader(shader);
+		if(gl.getShaderParameter(shader,gl.COMPILE_STATUS))return shader;
+		var log="Error compiling shader '"+id+"'\n"+gl.getShaderInfoLog(shader);
+		codelines=code.split("\n");
+		function itoa(i){var s="",n=codelines.length;while(n>1){s=(i%10)+s;i=Math.floor(i/10);n/=10}return s;}
+		for(var i=0;i<codelines.length;i++)log+="\n"+itoa(i+1)+"  "+codelines[i];
+		gl.deleteShader(shader);
+		console.log(log);
+	}
+	var vshader=compile(gl.VERTEX_SHADER,vid);
+	var fshader=compile(gl.FRAGMENT_SHADER,fid);
+	if(!vshader||!fshader){
+		if(vshader)gl.deleteShader(vshader);
+		if(fshader)gl.deleteShader(fshader);
+		return null;
+	}
+	var program=gl.createProgram();
+	gl.attachShader(program,vshader);
+	gl.attachShader(program,fshader);
+	gl.linkProgram(program);
+	
+    if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+		console.log("Error in program linking:"+gl.getProgramInfoLog(program));
+		if(vshader)gl.deleteShader(vshader);
+		if(fshader)gl.deleteShader(fshader);
+		gl.deleteProgram(program);
+		return null;
+	}
+	program.uniform={};
+	program.attribute={};
+	var attrLength=gl.getProgramParameter(program,gl.ACTIVE_ATTRIBUTES);
+	for(var i=0;i<attrLength;i++){
+		var attr=gl.getActiveAttrib(program,i);
+		program.attribute[attr.name]=gl.getAttribLocation(program,attr.name);
+	}
+	var uniLength=gl.getProgramParameter(program,gl.ACTIVE_UNIFORMS);
+	for(var i=0;i<uniLength;i++){
+		var uni=gl.getActiveUniform(program,i);
+		program.uniform[uni.name]=gl.getUniformLocation(program,uni.name);
+	}
+	return program;
+}
+function createTexture(gl,w,h){
+	var format=gl.UNSIGNED_BYTE
+	var texture=gl.createTexture();
+	gl.bindTexture(gl.TEXTURE_2D,texture);
+	gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+	gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+	gl.bindTexture(gl.TEXTURE_2D,null);
+	return texture;
+}
+function loadTexture(img,texture,mipmap){
+	gl.bindTexture(gl.TEXTURE_2D,texture);
+	gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,mipmap?gl.LINEAR_MIPMAP_LINEAR:gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+	gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+    if(mipmap)gl.generateMipmap(gl.TEXTURE_2D);
+    return texture;
+}
+</script>
+<script id="vshader" type="x-shader/x-vertex">
+uniform mat2 rotate;
+uniform vec2 position;
+attribute vec2 vertex;
+varying vec2 texcoord;
+void main(){
+	gl_Position=vec4(position+rotate*vertex,0,1);
+	texcoord=vec2(0.5,0.5)+vertex/2.;
+}
+</script>
+<script id="fshader" type="x-shader/x-fragment">
+precision mediump float;
+varying vec2 texcoord;
+uniform sampler2D texture;
+uniform float alpha;
+void main(void){
+	gl_FragColor=vec4(texture2D(texture,texcoord)*alpha);
+}
+</script>
+<script id="renderfshader" type="x-shader/x-fragment">
+precision mediump float;
+varying vec2 texcoord;
+uniform sampler2D texture;
+uniform vec3 color,dcolor;
+void main(void){
+	float val=texture2D(texture,texcoord).r;
+	gl_FragColor=vec4(color+val*dcolor,val);
+}
+</script>
+<script id="circleVShader" type="x-shader/x-vertex">
+uniform vec2 position;
+uniform float radius;
+attribute vec2 vertex;
+varying vec2 vert;
+void main(){
+	gl_Position=vec4(position+radius*vertex,0,1);
+	vert=vertex;
+}
+</script>
+<script id="circleFShader" type="x-shader/x-fragment">
+precision mediump float;
+varying vec2 vert;
+uniform float alpha;
+void main(void){
+	if(dot(vert,vert)>1.)discard;
+	gl_FragColor=vec4(alpha,alpha,alpha,1);
+}
+</script>
+<style>
+#main{position:absolute;left:0;top:0;}
+canvas{position:absolute;left:0;top:0;background:black;cursor:default;}
+#main .button{display:none;}
+#main:hover .button{display:inline-block;}
+.button-area{
+	position:absolute;left:4px;top:4px;
+}
+.button{
+	background:white;
+	padding:2px 4px;
+	font-size:20px;
+	border-radius:4px;
+	box-shadow:0 0 4px silver;
+	background:silver;
+	cursor:pointer;
+}
+.button:hover{
+	box-shadow:0 0 8px white;
+	background:gray;
+}
+.button:active{
+	box-shadow:0 0 8px silver;
+	background:gray;
+}
+
+</style>
+<div id='main' style='width:100%;height:100%;max-width:512px;max-height:512px;'>
+<canvas style='width:100%;height:100%;'></canvas>
+<div class='button-area'>
+<div onclick="fractal=[];draw(true)" class='button'>CLEAR</div>
+<div onclick="fractal.pop();draw(true)" class='button'>UNDO</div>
+</div>
