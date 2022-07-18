@@ -34,10 +34,33 @@ window.onload=function(){
   canvas.onmouseup=function(e){start=null;}
 
   ruleimg=gl.createTexture();
-  var img=new Image();
-  img.src="http://jsrun.it/assets/e/w/h/i/ewhi5.png"
-  img.onload=function(){loadTexture(img,ruleimg,true);draw(true);}
+  loadTexture(arrowImage(512), ruleimg, true)
+  draw(true)
 }
+
+function arrowImage(size) {
+  var img = document.createElement('canvas')
+  img.width = img.height = size
+  var ctx = img.getContext('2d')
+  ctx.strokeStyle = 'white'
+  const lineWidth = ctx.lineWidth = img.width / 32
+  ctx.beginPath()
+  ctx.arc(size / 2, size / 2, size / 2 - lineWidth, 0, 2 * Math.PI)
+  const a = 164 * size / 512
+  const b = 128 * size / 512
+  const c = 424 * size / 512
+  const d = 32 * size / 512
+  ctx.moveTo(size / 2, c)
+  ctx.lineTo(size / 2 - d, a)
+  ctx.lineTo(size / 2 - b, a)
+  ctx.lineTo(size / 2, a - b)
+  ctx.lineTo(size / 2 + b, a)
+  ctx.lineTo(size / 2 + d, a)
+  ctx.closePath()
+  ctx.stroke()
+  return img
+}
+
 
 function makeFractal(p1,p2){
   var x=(p1.x+p2.x)/2;
