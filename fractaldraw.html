@@ -12,28 +12,36 @@ window.onload = () => {
   quad = makeQuadVBO(gl)
   renderer = new FractalRenderer(gl, SIZE)
 
-  let start = null
-  canvas.onmousedown = e => {
-    const x = 2 * e.pageX / canvas.offsetWidth - 1
-    const y = 1 - 2 * e.pageY / canvas.offsetHeight
-    start = { x, y }
-    fractal.list.splice(fractal.length)
-    fractal.list.push(makeFractal(start, start))
-    fractal.length++
-    document.body.addEventListener('mousemove', mousemove)
-    const mouseup = () => {
-      document.body.removeEventListener('mousemove', mousemove)
-      document.body.removeEventListener('mouseup', mouseup)
+  canvas.addEventListener('touchstart', e => e.preventDefault())
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault()
+    const x = 2 * (e.pageX - canvas.offsetLeft) / canvas.offsetWidth - 1
+    const y = 1 - 2 * (e.pageY - canvas.offsetTop) / canvas.offsetHeight
+    const start = { x, y }
+    const current = makeFractal(start, start)
+    let added = false
+    const pointermove = e => {
+      const x = 2 * (e.pageX - canvas.offsetLeft) / canvas.offsetWidth - 1
+      const y = 1 - 2 * (e.pageY - canvas.offsetTop) / canvas.offsetHeight
+      const updated = makeFractal(start, { x, y })
+      for (const key in updated) current[key] = updated[key]
+      if (!added && current.r > 0.01) {
+        fractal.list.splice(fractal.length)
+        fractal.list.push(current)
+        fractal.length++
+        added = true
+      }
+      draw(true)
     }
-    document.body.addEventListener('mouseup', mouseup)
-  }
-  function mousemove(e) {
-    if (!start) return
-    const x = 2 * e.pageX / canvas.offsetWidth - 1
-    const y = 1 - 2 * e.pageY / canvas.offsetHeight
-    fractal.list[fractal.length - 1] = makeFractal(start, { x, y })
     draw(true)
-  }
+    window.addEventListener('pointermove', pointermove)
+    const pointerup = () => {
+      window.removeEventListener('pointermove', pointermove)
+      window.removeEventListener('pointerup', pointerup)
+      draw(false)
+    }
+    window.addEventListener('pointerup', pointerup)
+  })
   document.addEventListener('keydown', e => {
     if (!(e.metaKey || e.altKey || e.ctrlKey)) return
     if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
@@ -46,10 +54,8 @@ window.onload = () => {
     console.log(e.key)
   })
 
-  const main = document.getElementById('main')
-  main.onmouseout = () => draw(false)
-  main.onmouseover = () => draw(true)
-  canvas.onmouseup = () => { start = null }
+  canvas.onmouseout = () => draw(false)
+  canvas.onmouseover = () => draw(true)
 
   ruleImage = gl.createTexture()
   loadTexture(arrowImage(512), ruleImage, true)
@@ -356,12 +362,11 @@ void main(void){
 }
 </script>
 <style>
-#main{position:absolute;left:0;top:0;}
-canvas{position:absolute;left:0;top:0;background:black;cursor:default;}
-#main .button{display:none;}
-#main:hover .button{display:inline-block;}
+canvas{background:black;cursor:default;}
+.button{display:inline-block;}
 .button-area{
-  position:absolute;left:4px;top:4px;
+  left:4px;top:4px;
+  margin: 4px;
 }
 .button{
   background:white;
@@ -382,10 +387,9 @@ canvas{position:absolute;left:0;top:0;background:black;cursor:default;}
 }
 
 </style>
-<div id='main' style='width:100%;height:100%;max-width:512px;max-height:512px;'>
-<canvas style='width:100%;height:100%;'></canvas>
 <div class='button-area'>
-<div onclick="fractal.list=[]; fractal.length = 0; draw(true)" class='button'>CLEAR</div>
-<div onclick="undo()" class='button'>UNDO</div>
-<div onclick="redo()" class='button'>REDO</div>
+  <div onclick="fractal.list=[]; fractal.length = 0; draw(true)" class='button'>CLEAR</div>
+  <div onclick="undo()" class='button'>UNDO</div>
+  <div onclick="redo()" class='button'>REDO</div>
 </div>
+<canvas></canvas>
